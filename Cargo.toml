@@ -1,0 +1,10 @@
+[package]
+name = "mk_bary_gltf"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0"
+gltf = "1.0"
+gltf-json = { version = "1.0", features = ["names", "extras"] }
+serde_json = { version = "1.0", features = ["raw_value"] }
