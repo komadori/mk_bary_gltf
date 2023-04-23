@@ -1,5 +1,8 @@
 use std::collections::HashMap;
+use std::env;
 
+use anyhow::bail;
+use base64::Engine;
 use ::gltf as glb;
 use gltf_json as gltf;
 use gltf_json::validation::Checked::Valid;
@@ -180,7 +183,7 @@ fn main() -> Result<(), anyhow::Error> {
         Valid(gltf::mesh::Semantic::Extras("_BARYCENTRIC".to_string())),
         bary_acc_idx,
     );
-    attr_byte_offset += 12;
+    //attr_byte_offset += 12;
     let ind_acc_idx = root.accessors.push_index(gltf::Accessor {
         buffer_view: Some(ind_view_idx),
         byte_offset: 0,
@@ -213,26 +216,49 @@ fn main() -> Result<(), anyhow::Error> {
         primitives: vec![prim],
         weights: None,
     });
-    root.buffers.push(gltf::Buffer {
-        byte_length: buffer.len() as u32,
-        name: None,
-        uri: None,
-        extensions: Default::default(),
-        extras: Default::default(),
-    });
-    let json_string = gltf::serialize::to_string(&root)?;
-    let json_bytes = json_string.into_bytes();
-    let json_offset = json_bytes.len() as u32;
-    let glb = glb::binary::Glb {
-        header: glb::binary::Header {
-            magic: b"glTF".clone(),
-            version: 2,
-            length: json_offset + buffer.len() as u32,
-        },
-        bin: Some(std::borrow::Cow::Owned(buffer)),
-        json: std::borrow::Cow::Owned(json_bytes),
-    };
-    let writer = std::fs::File::create("barycentric.glb")?;
-    glb.to_writer(writer)?;
+
+    let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        bail!("mk_bary_gltf requires one argument specifying the output filename.");
+    }
+    let fname = &args[1];
+    if fname.ends_with(".glb") {
+        root.buffers.push(gltf::Buffer {
+            byte_length: buffer.len() as u32,
+            name: None,
+            uri: None,
+            extensions: Default::default(),
+            extras: Default::default(),
+        });
+        let json_string = gltf::serialize::to_string(&root)?;
+        let json_bytes = json_string.into_bytes();
+        let json_offset = json_bytes.len() as u32;
+        let glb = glb::binary::Glb {
+            header: glb::binary::Header {
+                magic: b"glTF".clone(),
+                version: 2,
+                length: json_offset + buffer.len() as u32,
+            },
+            bin: Some(std::borrow::Cow::Owned(buffer)),
+            json: std::borrow::Cow::Owned(json_bytes),
+        };
+        let writer = std::fs::File::create(fname)?;
+        glb.to_writer(writer)?;
+    }
+    else if fname.ends_with(".gltf") {
+        let encoded = base64::engine::general_purpose::STANDARD.encode(&buffer);
+        root.buffers.push(gltf::Buffer {
+            byte_length: buffer.len() as u32,
+            name: None,
+            uri: Some(format!("data:application/gltf-buffer;base64,{}", encoded)),
+            extensions: Default::default(),
+            extras: Default::default(),
+        });
+        let writer = std::fs::File::create(fname)?;
+        gltf::serialize::to_writer_pretty(writer, &root)?;
+    }
+    else {
+        bail!("Output filename must end in .glb or .gltf to indicate format.");
+    }
     Ok(())
 }
